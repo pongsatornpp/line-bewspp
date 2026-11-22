@@ -7,6 +7,7 @@ import {
   nowBangkokString,
   resolveQuestionDate,
   todayBangkok,
+  addDays,
   SheetUnavailableError,
 } from "@/lib/sheet";
 
@@ -101,19 +102,21 @@ async function handleEvent(client: messagingApi.MessagingApiClient, event: webho
   } else if (!sheet) {
     reply = `ตอนนี้ยูตะเปิดตารางไม่ได้ชั่วคราวฮับ${callName} ลองถามใหม่อีกสักครู่นะ 🐾`;
   } else {
-    // Date: explicit in question -> date of an event named in the question -> today (Bangkok).
+    // Explicit date (or an event named in the question) -> that day.
+    // Otherwise ("ตอนนี้มีอะไรบ้าง") -> everything from today through the next 7 days (Bangkok).
+    const today = todayBangkok();
     const date =
       resolveQuestionDate(question) ??
       sheet.events.find((e) => e.title && question.includes(e.title))?.date ??
-      todayBangkok();
+      null;
     const events = sheet.events
-      .filter((e) => e.date === date)
-      .sort((a, b) => a.start.localeCompare(b.start));
+      .filter((e) => (date ? e.date === date : e.date >= today && e.date <= addDays(today, 7)))
+      .sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start));
 
     console.log("[sheet] rows", {
       events: sheet.events.length,
       faqs: sheet.faqs.length,
-      date,
+      date: date ?? "upcoming-7d",
       matchedForDate: events.length,
     });
 

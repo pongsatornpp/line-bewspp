@@ -187,7 +187,8 @@ function toRows(csv: string): SheetRow[] {
       end,
       title: get("title"),
       place: get("place"),
-      priority: get("priority"),
+      // Numeric priority: 1 = highest.
+      priority: ({ "1": "สูง", "2": "กลาง", "3": "ต่ำ" } as Record<string, string>)[get("priority")] ?? get("priority"),
       note: get("note"),
       who: get("who"),
     };
