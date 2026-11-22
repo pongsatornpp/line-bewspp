@@ -87,7 +87,12 @@ export async function POST(req: Request) {
   const signature = req.headers.get("x-line-signature") ?? "";
   const secret = process.env.LINE_CHANNEL_SECRET ?? "";
 
-  if (!secret || !signature || !validateSignature(body, secret, signature)) {
+  if (!secret) {
+    console.error("[line] LINE_CHANNEL_SECRET is not set in this deployment");
+    return new NextResponse("Server not configured", { status: 401 });
+  }
+  if (!signature || !validateSignature(body, secret, signature)) {
+    console.error("[line] signature mismatch (secretLength=%d)", secret.length);
     return new NextResponse("Invalid signature", { status: 401 });
   }
 
