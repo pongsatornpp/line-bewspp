@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { messagingApi, validateSignature, webhook } from "@line/bot-sdk";
-import { askYuta, NO_INFO_REPLY } from "@/lib/gemini";
+import { askYuta, NO_INFO_REPLY, parseReminderRequest } from "@/lib/gemini";
+import { addReminder, describeWhen, remindersEnabled, resolveReminder } from "@/lib/reminders";
 import {
   loadSheet,
   nowBangkokString,
@@ -36,6 +37,47 @@ async function getCallName(client: messagingApi.MessagingApiClient, userId?: str
   }
 }
 
+async function buildReminderReply(
+  question: string,
+  callName: string,
+  userId: string | undefined,
+  events: Awaited<ReturnType<typeof loadSheet>>["events"],
+): Promise<string> {
+  const cannot = `ยูตะตั้งเตือนให้ไม่ได้ในตอนนี้ฮับ${callName} ลองบอกเวลาใหม่อีกทีนะ 🐾`;
+  if (!remindersEnabled() || !userId) return cannot;
+
+  const parsed = await parseReminderRequest({ question, nowBangkok: nowBangkokString(), events });
+  if (!parsed) return `ยูตะฟังเวลาไม่ชัดเลยอ่ะฮับ${callName} ลองบอกใหม่ เช่น "เตือน 18:30" นะ 🐾`;
+
+  // The model sometimes drops the task text; recover "…นาที ให้กินยา" with a simple pattern.
+  if (!parsed.message?.trim()) {
+    const m = question.match(/(?:นาที|ชั่วโมง|\d{1,2}[:.]\d{2})\s*ให้\s*(\S.*)$/);
+    if (m) parsed.message = m[1].trim();
+  }
+
+  const nowMs = Date.now();
+  const resolved = resolveReminder(parsed, nowMs, events);
+  if ("error" in resolved) {
+    if (resolved.error === "past") return `เวลานั้นผ่านไปแล้วอ่ะฮับ${callName} ลองบอกเวลาใหม่นะ 🐾`;
+    if (resolved.error === "no_event") return `ยูตะหากิจกรรมนั้นในตารางไม่เจอฮับ${callName} ลองบอกเป็นเวลาแทนนะ 🐾`;
+    return `ยูตะยังจับเวลาไม่ได้อ่ะฮับ${callName} ลองบอกใหม่ เช่น "เตือน 18:30" หรือ "เตือนก่อนประชุม 15 นาที" นะ 🐾`;
+  }
+
+  try {
+    await addReminder({
+      id: crypto.randomUUID(),
+      userId,
+      callName,
+      message: resolved.message,
+      dueAt: resolved.dueAt,
+    });
+  } catch (err) {
+    console.error("[reminder] save failed:", err instanceof Error ? err.message : "unknown");
+    return cannot;
+  }
+  return `ได้เลยฮับ${callName} เดี๋ยวยูตะเตือน${describeWhen(resolved.dueAt, nowMs)} น้า 🐶`;
+}
+
 async function handleEvent(client: messagingApi.MessagingApiClient, event: webhook.Event) {
   if (event.type !== "message" || event.message.type !== "text") return;
   const question = event.message.text;
@@ -51,7 +93,9 @@ async function handleEvent(client: messagingApi.MessagingApiClient, event: webho
   ]);
 
   let reply: string;
-  if (!sheet) {
+  if (/เตือน/.test(question)) {
+    reply = await buildReminderReply(question, callName, event.source?.userId, sheet?.events ?? []);
+  } else if (!sheet) {
     reply = `ตอนนี้ยูตะเปิดตารางไม่ได้ชั่วคราวฮับ${callName} ลองถามใหม่อีกสักครู่นะ 🐾`;
   } else {
     // Date: explicit in question -> date of an event named in the question -> today (Bangkok).

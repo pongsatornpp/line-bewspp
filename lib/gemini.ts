@@ -1,4 +1,5 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, Type } from "@google/genai";
+import type { ReminderRequest } from "./reminders";
 import type { SheetRow } from "./sheet";
 import { findConflicts } from "./sheet";
 
@@ -140,5 +141,54 @@ export async function askYuta(args: {
     const e = err as { name?: string; status?: number; message?: string };
     console.error("[gemini] error:", { name: e?.name, status: e?.status, message: e?.message?.slice(0, 200) });
     return { fallback: true };
+  }
+}
+
+/** Structured parse of a "remind me" request. Returns null on any failure (code then asks the user to rephrase). */
+export async function parseReminderRequest(args: {
+  question: string;
+  nowBangkok: string;
+  events: SheetRow[];
+}): Promise<ReminderRequest | null> {
+  const titles = Array.from(new Set(args.events.map((e) => e.title).filter(Boolean))).slice(0, 50);
+  const prompt = `วันเวลาปัจจุบันคือ ${args.nowBangkok} (เวลาไทย)
+สกัดคำขอตั้งเตือนจากข้อความผู้ใช้ ตอบเป็น JSON ตาม schema เท่านั้น
+- kind = "absolute" ถ้าระบุเวลาชัดเจน เช่น "เตือน 02:47" (ใส่ time เป็น HH:MM 24 ชม. และ date เป็น YYYY-MM-DD เฉพาะเมื่อผู้ใช้ระบุวันที่ชัดเจน ไม่งั้นเว้นว่าง)
+- kind = "in_minutes" ถ้าบอกว่าอีกกี่นาที/ชั่วโมง (แปลงเป็นนาทีใน minutes)
+- kind = "before_event" ถ้าให้เตือนก่อนกิจกรรมกี่นาที (ใส่ eventTitle ให้ตรงกับรายการด้านล่างที่สุด และ minutes)
+- kind = "unclear" ถ้าข้อมูลไม่พอ
+- message = เรื่องที่ผู้ใช้อยากให้เตือนให้ทำ ต้องใส่เสมอถ้ามี เช่น "เตือนอีก 10 นาทีให้กินยา" -> "กินยา" เว้นว่างเฉพาะเมื่อไม่ได้ระบุเรื่องเลย
+รายการกิจกรรม: ${titles.join(" | ") || "(ไม่มี)"}
+ข้อความผู้ใช้: ${args.question}`;
+
+  try {
+    const response = await getClient().models.generateContent({
+      model: GEMINI_MODEL,
+      contents: prompt,
+      config: {
+        temperature: 0,
+        maxOutputTokens: 512,
+        abortSignal: AbortSignal.timeout(TIMEOUT_MS),
+        responseMimeType: "application/json",
+        responseSchema: {
+          type: Type.OBJECT,
+          properties: {
+            kind: { type: Type.STRING, enum: ["absolute", "in_minutes", "before_event", "unclear"] },
+            time: { type: Type.STRING },
+            date: { type: Type.STRING },
+            minutes: { type: Type.INTEGER },
+            eventTitle: { type: Type.STRING },
+            message: { type: Type.STRING },
+          },
+          required: ["kind"],
+        },
+      },
+    });
+    if (response.candidates?.[0]?.finishReason === "MAX_TOKENS" || !response.text) return null;
+    return JSON.parse(response.text) as ReminderRequest;
+  } catch (err) {
+    const e = err as { name?: string; message?: string };
+    console.error("[gemini] reminder parse failed:", { name: e?.name, message: e?.message?.slice(0, 200) });
+    return null;
   }
 }
