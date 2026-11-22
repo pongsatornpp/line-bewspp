@@ -63,6 +63,13 @@ async function handleEvent(client: messagingApi.MessagingApiClient, event: webho
       .filter((e) => e.date === date)
       .sort((a, b) => a.start.localeCompare(b.start));
 
+    console.log("[sheet] rows", {
+      events: sheet.events.length,
+      faqs: sheet.faqs.length,
+      date,
+      matchedForDate: events.length,
+    });
+
     const result = await askYuta({
       question,
       callName,

@@ -113,6 +113,27 @@ function parseCsv(text: string): string[][] {
   return rows.filter((r) => r.some((v) => v.trim() !== ""));
 }
 
+/** Sheets exports dates as displayed, so accept YYYY-MM-DD, D/M/YYYY and Buddhist-era years. */
+function normalizeDate(raw: string): string {
+  const v = raw.trim();
+  let y: number, m: number, d: number;
+  let match = v.match(/^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})/);
+  if (match) {
+    [y, m, d] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  } else if ((match = v.match(/^(\d{1,2})[-/.](\d{1,2})[-/.](\d{4})/))) {
+    [d, m, y] = [Number(match[1]), Number(match[2]), Number(match[3])];
+  } else {
+    return v;
+  }
+  if (y > 2400) y -= 543;
+  return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+function normalizeTime(raw: string): string {
+  const m = raw.trim().match(/^(\d{1,2})[:.](\d{2})/);
+  return m ? `${m[1].padStart(2, "0")}:${m[2]}` : raw.trim();
+}
+
 function toRows(csv: string): SheetRow[] {
   const table = parseCsv(csv);
   if (table.length === 0) return [];
@@ -121,9 +142,9 @@ function toRows(csv: string): SheetRow[] {
     const get = (name: string) => (cells[header.indexOf(name)] ?? "").trim();
     return {
       type: get("type").toLowerCase(),
-      date: get("date"),
-      start: get("start"),
-      end: get("end"),
+      date: normalizeDate(get("date")),
+      start: normalizeTime(get("start")),
+      end: normalizeTime(get("end")),
       title: get("title"),
       place: get("place"),
       priority: get("priority"),
