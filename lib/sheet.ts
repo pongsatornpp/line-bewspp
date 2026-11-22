@@ -172,7 +172,15 @@ export async function loadSheet(): Promise<SheetData> {
       cache: "no-store",
     });
     if (!res.ok) throw new Error(`sheet fetch status ${res.status}`);
-    const rows = toRows(await res.text());
+    const text = await res.text();
+    const rows = toRows(text);
+    // Diagnostics only: header names + distinct `type` values (no row content).
+    console.log("[sheet] parsed", {
+      contentType: res.headers.get("content-type"),
+      header: parseCsv(text)[0]?.map((h) => h.trim().slice(0, 30)),
+      totalRows: rows.length,
+      types: Array.from(new Set(rows.map((r) => r.type))).slice(0, 10),
+    });
     const data: SheetData = {
       events: rows.filter((r) => r.type === "event"),
       faqs: rows.filter((r) => r.type === "faq"),
