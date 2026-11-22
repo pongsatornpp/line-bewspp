@@ -3,7 +3,7 @@ import type { SheetRow } from "./sheet";
 import { findConflicts } from "./sheet";
 
 // Single source of truth for the model name. Do not change without asking the owner.
-export const GEMINI_MODEL = "gemini-3.5-flash";
+export const GEMINI_MODEL = "gemini-3.5-flash-lite";
 
 const TIMEOUT_MS = 7_000;
 
