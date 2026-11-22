@@ -44,7 +44,10 @@ async function buildReminderReply(
   events: Awaited<ReturnType<typeof loadSheet>>["events"],
 ): Promise<string> {
   const cannot = `ยูตะตั้งเตือนให้ไม่ได้ในตอนนี้ฮับ${callName} ลองบอกเวลาใหม่อีกทีนะ 🐾`;
-  if (!remindersEnabled() || !userId) return cannot;
+  if (!remindersEnabled() || !userId) {
+    console.error("[reminder] unavailable", { redisConfigured: remindersEnabled(), hasUserId: !!userId });
+    return cannot;
+  }
 
   const parsed = await parseReminderRequest({ question, nowBangkok: nowBangkokString(), events });
   if (!parsed) return `ยูตะฟังเวลาไม่ชัดเลยอ่ะฮับ${callName} ลองบอกใหม่ เช่น "เตือน 18:30" นะ 🐾`;
