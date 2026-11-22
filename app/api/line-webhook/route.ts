@@ -52,7 +52,7 @@ async function handleEvent(client: messagingApi.MessagingApiClient, event: webho
 
   let reply: string;
   if (!sheet) {
-    reply = `ตอนนี้ยูตะเปิดตารางไม่ได้ชั่วคราวครับ ${callName}ลองถามใหม่อีกสักครู่นะ 🐾`;
+    reply = `ตอนนี้ยูตะเปิดตารางไม่ได้ชั่วคราวฮับ${callName} ลองถามใหม่อีกสักครู่นะ 🐾`;
   } else {
     // Date: explicit in question -> date of an event named in the question -> today (Bangkok).
     const date =

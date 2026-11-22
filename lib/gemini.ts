@@ -10,7 +10,9 @@ const TIMEOUT_MS = 7_000;
 export type YutaResult = { text: string } | { fallback: true };
 
 export const NO_INFO_REPLY = (callName: string) =>
-  `ยูตะยังไม่รู้เรื่องนี้เลยครับ ${callName}ลองเช็กในตารางอีกทีนะ 🐾`;
+  `ยูตะยังไม่รู้เรื่องนี้เลยฮับ${callName} ลองเช็กในตารางอีกทีนะ 🐾`;
+
+const toMama = (t: string) => t.replaceAll("เอม", "มะม๊า");
 
 function formatEvents(events: SheetRow[]): string {
   if (events.length === 0) return "(ไม่มีกิจกรรม)";
@@ -20,7 +22,7 @@ function formatEvents(events: SheetRow[]): string {
         e.date,
         [e.start, e.end].filter(Boolean).join("-"),
         e.title,
-        e.place,
+        e.place && (e.place.startsWith("ที่") ? e.place : `ที่${e.place}`),
         e.who && `กับ ${e.who}`,
         e.priority && `ความสำคัญ${e.priority}`,
         e.note,
@@ -28,7 +30,8 @@ function formatEvents(events: SheetRow[]): string {
         .filter(Boolean)
         .join(" "),
     )
-    .join("\n");
+    .join("\n")
+    .replace(/.*/s, toMama);
 }
 
 function formatFaqs(faqs: SheetRow[]): string {
@@ -61,8 +64,11 @@ function buildPrompt(args: {
 - ถ้าถูกขอให้ตั้งเตือน และระบบเตือนยังไม่เปิดใช้ ให้บอกตรง ๆ ว่ายูตะยังตั้งเตือนให้ไม่ได้ในตอนนี้
   ห้ามพูดว่าตั้งเตือนให้แล้ว
 - ถ้าไม่มีข้อมูลที่ตอบได้ ให้ตอบว่า:
-  "ยูตะยังไม่รู้เรื่องนี้เลยครับ ${callName}ลองเช็กในตารางอีกทีนะ 🐾"
-- โทน: เป็นกันเองแบบลูกชายพูดกับพ่อแม่ ลงท้าย "ครับ"
+  "ยูตะยังไม่รู้เรื่องนี้เลยฮับ${callName} ลองเช็กในตารางอีกทีนะ 🐾"
+- โทน: เป็นกันเองแบบลูกชายพูดกับพ่อแม่ น่ารัก อ้อน ๆ นิดหน่อย
+- คำลงท้าย: ห้ามใช้ "ครับ" ให้ใช้ "ฮับ${callName}" แทนเสมอ เช่น "วันนี้มีนัด 18:00 ฮับ${callName}"
+- ถ้าต้องพูดถึงคนชื่อ "เอม" ให้เรียกว่า "มะม๊า" แทนเสมอ
+- เมื่อบอกสถานที่ ให้ใส่คำว่า "ที่" นำหน้าชื่อสถานที่เสมอ เช่น "ที่บ้านมะม๊า" 
 - อีโมจิ: ใช้ได้นิดหน่อย แนวสัตว์เลี้ยง (🐶 🐾) ไม่เกิน 1-2 ตัวต่อข้อความ
 - ความยาว: 1-3 ประโยค กระชับ ไม่สั้นห้วน ไม่ยาวเกิน
 </constraints>
@@ -125,7 +131,7 @@ export async function askYuta(args: {
       console.warn("[gemini] fallback:", finishReason === "MAX_TOKENS" ? "MAX_TOKENS" : "empty text");
       return { fallback: true };
     }
-    return { text };
+    return { text: toMama(text) };
   } catch (err) {
     const e = err as { name?: string; status?: number; message?: string };
     console.error("[gemini] error:", { name: e?.name, status: e?.status, message: e?.message?.slice(0, 200) });
