@@ -11,6 +11,7 @@ export type SheetRow = {
   place: string;
   priority: string;
   note: string;
+  who: string;
 };
 
 export type SheetData = { events: SheetRow[]; faqs: SheetRow[] };
@@ -130,25 +131,65 @@ function normalizeDate(raw: string): string {
 }
 
 function normalizeTime(raw: string): string {
-  const m = raw.trim().match(/^(\d{1,2})[:.](\d{2})/);
-  return m ? `${m[1].padStart(2, "0")}:${m[2]}` : raw.trim();
+  const m = raw.trim().match(/^(\d{1,2})[:.](\d{2})(?::\d{2})?\s*([AaPp][Mm])?/);
+  if (!m) return raw.trim();
+  let h = Number(m[1]);
+  if (m[3]) {
+    const pm = m[3].toLowerCase() === "pm";
+    if (pm && h < 12) h += 12;
+    if (!pm && h === 12) h = 0;
+  }
+  return `${String(h).padStart(2, "0")}:${m[2]}`;
 }
+
+/** "18:00", "18:00-19:30", "18:00 – 19:30", "18:00 ถึง 19:30" -> { start, end } */
+function splitTime(raw: string, endRaw: string): { start: string; end: string } {
+  const range = raw.split(/\s*(?:-|–|—|ถึง|to)\s*/i);
+  if (range.length >= 2 && range[1]) {
+    return { start: normalizeTime(range[0]), end: normalizeTime(range[1]) };
+  }
+  return { start: normalizeTime(raw), end: normalizeTime(endRaw) };
+}
+
+// Accepts the original English headers plus the sheet's actual ones (Time/Date/Activity/Location/With/Priority).
+const ALIASES: Record<keyof SheetRow, string[]> = {
+  type: ["type", "ประเภท"],
+  date: ["date", "วันที่", "วัน"],
+  start: ["start", "time", "เวลา", "เวลาเริ่ม"],
+  end: ["end", "เวลาสิ้นสุด", "เวลาจบ"],
+  title: ["title", "activity", "กิจกรรม", "เรื่อง"],
+  place: ["place", "location", "สถานที่"],
+  priority: ["priority", "ความสำคัญ"],
+  note: ["note", "notes", "หมายเหตุ"],
+  who: ["with", "กับ", "ไปกับ"],
+};
 
 function toRows(csv: string): SheetRow[] {
   const table = parseCsv(csv);
   if (table.length === 0) return [];
   const header = table[0].map((h) => h.trim().toLowerCase());
+  const col = (field: keyof SheetRow) =>
+    header.findIndex((h) => ALIASES[field].includes(h));
+  const idx = Object.fromEntries(
+    (Object.keys(ALIASES) as (keyof SheetRow)[]).map((f) => [f, col(f)]),
+  ) as Record<keyof SheetRow, number>;
+
   return table.slice(1).map((cells) => {
-    const get = (name: string) => (cells[header.indexOf(name)] ?? "").trim();
+    const get = (f: keyof SheetRow) => (idx[f] >= 0 ? (cells[idx[f]] ?? "").trim() : "");
+    const { start, end } = splitTime(get("start"), get("end"));
+    const date = normalizeDate(get("date"));
+    // No `type` column (or blank): a row with a date is an event.
+    const type = get("type").toLowerCase() || (date ? "event" : "");
     return {
-      type: get("type").toLowerCase(),
-      date: normalizeDate(get("date")),
-      start: normalizeTime(get("start")),
-      end: normalizeTime(get("end")),
+      type,
+      date,
+      start,
+      end,
       title: get("title"),
       place: get("place"),
       priority: get("priority"),
       note: get("note"),
+      who: get("who"),
     };
   });
 }

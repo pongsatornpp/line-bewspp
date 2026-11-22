@@ -21,6 +21,7 @@ function formatEvents(events: SheetRow[]): string {
         [e.start, e.end].filter(Boolean).join("-"),
         e.title,
         e.place,
+        e.who && `กับ ${e.who}`,
         e.priority && `ความสำคัญ${e.priority}`,
         e.note,
       ]
