@@ -14,6 +14,8 @@ export type SheetRow = {
   who: string;
   /** Weekdays (0=Sun..6=Sat) for recurring rows like "วัน จ - ศ"; empty for dated rows. */
   days: number[];
+  /** Day of month (1-31) for monthly rows like "23 ของทุกเดือน"; 0 if not monthly. */
+  monthDay: number;
 };
 
 export type SheetData = { events: SheetRow[]; routines: SheetRow[]; faqs: SheetRow[] };
@@ -170,7 +172,7 @@ function splitTime(raw: string, endRaw: string): { start: string; end: string } 
 }
 
 // Accepts the original English headers plus the sheet's actual ones (Time/Date/Activity/Location/With/Priority).
-const ALIASES: Record<Exclude<keyof SheetRow, "days">, string[]> = {
+const ALIASES: Record<Exclude<keyof SheetRow, "days" | "monthDay">, string[]> = {
   type: ["type", "ประเภท"],
   date: ["date", "วันที่", "วัน"],
   start: ["start", "time", "เวลา", "เวลาเริ่ม"],
@@ -227,17 +229,25 @@ function toRows(csv: string): SheetRow[] {
   ) as Record<keyof typeof ALIASES, number>;
 
   return table.slice(1).map((cells) => {
-    const get = (f: keyof typeof ALIASES) => (idx[f] >= 0 ? (cells[idx[f]] ?? "").trim() : "");
+    // A lone "-" / "–" / "—" is a placeholder for "empty".
+    const get = (f: keyof typeof ALIASES) => {
+      const v = idx[f] >= 0 ? (cells[idx[f]] ?? "").trim() : "";
+      return /^[-–—]+$/.test(v) ? "" : v;
+    };
     const { start, end } = splitTime(get("start"), get("end"));
     const rawDate = get("date");
     let date = normalizeDate(rawDate);
     let days: number[] = [];
+    let monthDay = 0;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
-      days = parseDays(rawDate);
+      const md = rawDate.match(/(\d{1,2})\s*ของ?ทุกเดือน|ทุกเดือน(?:วันที่)?\s*(\d{1,2})|ทุกวันที่\s*(\d{1,2})/);
+      const n = md ? Number(md[1] ?? md[2] ?? md[3]) : 0;
+      if (n >= 1 && n <= 31) monthDay = n;
+      else days = parseDays(rawDate);
       date = "";
     }
     // No `type` column (or blank): a row with a date or weekdays is an event.
-    const type = get("type").toLowerCase() || (date || days.length > 0 ? "event" : "");
+    const type = get("type").toLowerCase() || (date || days.length > 0 || monthDay > 0 ? "event" : "");
     return {
       type,
       date,
@@ -250,6 +260,7 @@ function toRows(csv: string): SheetRow[] {
       note: get("note"),
       who: get("who"),
       days,
+      monthDay,
     };
   });
 }
@@ -283,8 +294,8 @@ export async function loadSheet(): Promise<SheetData> {
       types: Array.from(new Set(rows.map((r) => r.type))).slice(0, 10),
     });
     const data: SheetData = {
-      events: rows.filter((r) => r.type === "event" && r.days.length === 0),
-      routines: rows.filter((r) => r.type === "event" && r.days.length > 0),
+      events: rows.filter((r) => r.type === "event" && r.days.length === 0 && r.monthDay === 0),
+      routines: rows.filter((r) => r.type === "event" && (r.days.length > 0 || r.monthDay > 0)),
       faqs: rows.filter((r) => r.type === "faq"),
     };
     cache = { at: now, data };
@@ -342,4 +353,16 @@ export function findConflicts(events: SheetRow[]): string[] {
     }
   }
   return out;
+}
+
+/** Next date (YYYY-MM-DD, on or after `today`) whose day-of-month equals `day`. */
+export function nextMonthlyOccurrence(day: number, today: string): string {
+  const [y, m] = today.split("-").map(Number);
+  for (let i = 0; i < 14; i++) {
+    const cand = new Date(Date.UTC(y, m - 1 + i, day));
+    if (cand.getUTCDate() !== day) continue; // month too short
+    const iso = cand.toISOString().slice(0, 10);
+    if (iso >= today) return iso;
+  }
+  return today;
 }

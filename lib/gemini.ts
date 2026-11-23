@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { ReminderRequest } from "./reminders";
 import type { SheetRow } from "./sheet";
-import { findConflicts, weekdayIndex, weekdayTh } from "./sheet";
+import { findConflicts, nextMonthlyOccurrence, todayBangkok, weekdayIndex, weekdayTh } from "./sheet";
 
 // Single source of truth for the model name. Do not change without asking the owner.
 export const GEMINI_MODEL = "gemini-3.5-flash-lite";
@@ -43,7 +43,14 @@ function formatRoutines(routines: SheetRow[]): string {
     routines
       .map((e) =>
         [
-          e.days.length === 7 ? "ทุกวัน" : `ทุกวัน${e.days.map((d) => DAY_NAMES[d]).join(" ")}`,
+          e.monthDay > 0
+            ? (() => {
+                const next = nextMonthlyOccurrence(e.monthDay, todayBangkok());
+                return `ทุกเดือนวันที่ ${e.monthDay} (ครั้งถัดไป ${next.slice(8, 10)}/${next.slice(5, 7)} ${weekdayTh(next)})`;
+              })()
+            : e.days.length === 7
+              ? "ทุกวัน"
+              : `ทุกวัน${e.days.map((d) => DAY_NAMES[d]).join(" ")}`,
           [e.start, e.end].filter(Boolean).join("-"),
           e.title,
           e.place && !e.title.includes(e.place) && (/^(ที่|ออนไลน์)/.test(e.place) ? e.place : `ที่${e.place}`),
@@ -70,8 +77,9 @@ function buildPrompt(args: {
   faqs: SheetRow[];
   nowBangkok: string;
   targetDate?: string;
+  focus?: SheetRow[];
 }): string {
-  const { question, callName, events, routines, faqs, nowBangkok, targetDate } = args;
+  const { question, callName, events, routines, faqs, nowBangkok, targetDate, focus = [] } = args;
   const conflicts = findConflicts(events);
   return `<role>
 คุณคือ "ยูตะ" สุนัขผู้จัดการส่วนตัว ทำตัวเป็นลูกชายที่น่ารักและพึ่งพาได้
@@ -91,6 +99,8 @@ ${targetDate ? `- วันที่ผู้ใช้ถามถึงคื�
   ห้ามพูดว่าตั้งเตือนให้แล้ว
 - ถ้าถามถึงวันที่ผ่านมาแล้ว ให้ตอบตามตารางที่มี และบอกว่า "ตามตาราง" เพราะยูตะไม่รู้ว่าเกิดขึ้นจริงหรือไม่
 - ถ้าถามถึงกิจวัตรที่มีใน <routine> แต่ <routine_on_target_day> บอกว่าวันนั้นไม่มี ให้ตอบว่าวันนั้นไม่มีกิจวัตรนั้นตามตาราง (เช่น "วันอาทิตย์ม๊าไม่ได้ไปทำงานตามตารางนะ") ห้ามตอบว่าไม่รู้
+- ถ้าถามกว้าง ๆ ว่ามีกิจกรรมอะไรบ้าง ให้ลิสต์กิจกรรมที่มีวันที่ใน <schedule> ให้ครบทุกรายการ
+- ถ้ามี <focus> แปลว่าผู้ใช้ถามถึงรายการนั้นโดยตรง ให้ตอบเฉพาะรายการใน <focus> ห้ามพูดถึงกิจกรรมอื่น ถ้าถามว่า "วันไหน" ให้ตอบแค่วันสั้น ๆ ถ้าเป็นรายการที่ทำซ้ำ ให้บอกรูปแบบก่อน เช่น "ทุกวันที่ 23 ของเดือนฮับป๊า" แล้วค่อยบอกครั้งถัดไป
 - ตอบว่าไม่รู้ได้เฉพาะเมื่อไม่มีข้อมูลที่เกี่ยวข้องเลยใน <schedule>, <routine> และ <faq> เท่านั้น
   ถ้าคำถามกว้างหรือสะกดไม่ตรง (เช่น "วันครบรอบวันไหน") ให้ดูกิจกรรมที่ชื่อหรือความหมายใกล้เคียงแล้วตอบจากข้อมูลนั้นเลย
 - ถ้าไม่มีข้อมูลที่ตอบได้จริง ๆ ให้ตอบว่า:
@@ -128,7 +138,11 @@ ${
     ? `
 <routine_on_target_day>
 ${targetDate} (${weekdayTh(targetDate)}) มีกิจวัตร: ${
-        formatRoutines(routines.filter((r) => r.days.includes(weekdayIndex(targetDate)))).replace("(ไม่มี)", "ไม่มี") 
+        formatRoutines(
+          routines.filter(
+            (r) => r.days.includes(weekdayIndex(targetDate)) || r.monthDay === Number(targetDate.slice(8, 10)),
+          ),
+        ).replace("(ไม่มี)", "ไม่มี") 
       }
 </routine_on_target_day>
 `
@@ -138,6 +152,16 @@ ${targetDate} (${weekdayTh(targetDate)}) มีกิจวัตร: ${
 <faq>
 ${formatFaqs(faqs)}
 </faq>
+${
+  focus.length > 0
+    ? `
+<focus>
+${formatRoutines(focus.filter((f) => f.monthDay > 0 || f.days.length > 0))}
+${formatEvents(focus.filter((f) => f.monthDay === 0 && f.days.length === 0)).replace("(ไม่มีกิจกรรม)", "")}
+</focus>
+`
+    : ""
+}
 
 <conflicts>
 ${conflicts.length > 0 ? conflicts.join("\n") : "ไม่มีเวลาชน"}
@@ -162,6 +186,7 @@ export async function askYuta(args: {
   faqs?: SheetRow[];
   nowBangkok: string;
   targetDate?: string;
+  focus?: SheetRow[];
 }): Promise<YutaResult> {
   try {
     const response = await getClient().models.generateContent({
