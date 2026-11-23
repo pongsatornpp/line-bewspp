@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { ReminderRequest } from "./reminders";
 import type { SheetRow } from "./sheet";
-import { findConflicts, weekdayTh } from "./sheet";
+import { findConflicts, weekdayIndex, weekdayTh } from "./sheet";
 
 // Single source of truth for the model name. Do not change without asking the owner.
 export const GEMINI_MODEL = "gemini-3.5-flash-lite";
@@ -90,6 +90,7 @@ ${targetDate ? `- วันที่ผู้ใช้ถามถึงคื�
 - ถ้าถูกขอให้ตั้งเตือน และระบบเตือนยังไม่เปิดใช้ ให้บอกตรง ๆ ว่ายูตะยังตั้งเตือนให้ไม่ได้ในตอนนี้
   ห้ามพูดว่าตั้งเตือนให้แล้ว
 - ถ้าถามถึงวันที่ผ่านมาแล้ว ให้ตอบตามตารางที่มี และบอกว่า "ตามตาราง" เพราะยูตะไม่รู้ว่าเกิดขึ้นจริงหรือไม่
+- ถ้าถามถึงกิจวัตรที่มีใน <routine> แต่ <routine_on_target_day> บอกว่าวันนั้นไม่มี ให้ตอบว่าวันนั้นไม่มีกิจวัตรนั้นตามตาราง (เช่น "วันอาทิตย์ม๊าไม่ได้ไปทำงานตามตารางนะ") ห้ามตอบว่าไม่รู้
 - ถ้าไม่มีข้อมูลที่ตอบได้ ให้ตอบว่า:
   "ยูตะยังไม่รู้เรื่องนี้เลยฮับ${callName} ลองเช็กในตารางอีกทีนะ 🐾"
 - โทน: พูดเหมือนลูกชายคุยกับพ่อแม่จริง ๆ เป็นภาษาพูด ไม่ใช่ภาษาเขียน น่ารัก อ้อน ๆ นิดหน่อย
@@ -120,6 +121,17 @@ ${formatEvents(events)}
 <routine>
 ${formatRoutines(routines)}
 </routine>
+${
+  targetDate
+    ? `
+<routine_on_target_day>
+${targetDate} (${weekdayTh(targetDate)}) มีกิจวัตร: ${
+        formatRoutines(routines.filter((r) => r.days.includes(weekdayIndex(targetDate)))).replace("(ไม่มี)", "ไม่มี") 
+      }
+</routine_on_target_day>
+`
+    : ""
+}
 
 <faq>
 ${formatFaqs(faqs)}
