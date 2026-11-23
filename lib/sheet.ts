@@ -42,10 +42,19 @@ export function todayBangkok(now: Date = new Date()): string {
   return `${p.year}-${p.month}-${p.day}`;
 }
 
-/** e.g. "2026-11-22 14:05" in Asia/Bangkok */
+const WEEKDAYS_TH = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
+
+/** Weekday name for a YYYY-MM-DD date, computed in code so the model never guesses it. */
+export function weekdayTh(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  return `วัน${WEEKDAYS_TH[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]}`;
+}
+
+/** e.g. "2026-11-22 14:05 (วันอาทิตย์)" in Asia/Bangkok */
 export function nowBangkokString(now: Date = new Date()): string {
   const p = bangkokParts(now);
-  return `${p.year}-${p.month}-${p.day} ${p.hour}:${p.minute}`;
+  const date = `${p.year}-${p.month}-${p.day}`;
+  return `${date} ${p.hour}:${p.minute} (${weekdayTh(date)})`;
 }
 
 export function addDays(date: string, days: number): string {

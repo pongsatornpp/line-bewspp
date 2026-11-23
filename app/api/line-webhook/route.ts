@@ -125,6 +125,7 @@ async function handleEvent(client: messagingApi.MessagingApiClient, event: webho
       callName,
       events,
       routines: sheet.routines,
+      targetDate: date ?? undefined,
       faqs: sheet.faqs,
       nowBangkok: nowBangkokString(),
     });

@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { ReminderRequest } from "./reminders";
 import type { SheetRow } from "./sheet";
-import { findConflicts } from "./sheet";
+import { findConflicts, weekdayTh } from "./sheet";
 
 // Single source of truth for the model name. Do not change without asking the owner.
 export const GEMINI_MODEL = "gemini-3.5-flash-lite";
@@ -20,7 +20,7 @@ function formatEvents(events: SheetRow[]): string {
   return events
     .map((e) =>
       [
-        e.date,
+        e.date && `${e.date} (${weekdayTh(e.date)})`,
         [e.start, e.end].filter(Boolean).join("-"),
         e.title,
         e.place && !e.title.includes(e.place) && (/^(ที่|ออนไลน์)/.test(e.place) ? e.place : `ที่${e.place}`),
@@ -69,8 +69,9 @@ function buildPrompt(args: {
   routines: SheetRow[];
   faqs: SheetRow[];
   nowBangkok: string;
+  targetDate?: string;
 }): string {
-  const { question, callName, events, routines, faqs, nowBangkok } = args;
+  const { question, callName, events, routines, faqs, nowBangkok, targetDate } = args;
   const conflicts = findConflicts(events);
   return `<role>
 คุณคือ "ยูตะ" สุนัขผู้จัดการส่วนตัว ทำตัวเป็นลูกชายที่น่ารักและพึ่งพาได้
@@ -82,7 +83,8 @@ function buildPrompt(args: {
 - ตอบโดยใช้ข้อมูลใน <schedule>, <routine> (กิจวัตรที่ทำซ้ำทุกสัปดาห์) และ <faq> เท่านั้น
 - ห้ามแต่งเวลา สถานที่ ชื่อกิจกรรม หรือรายละเอียดที่ไม่มีในข้อมูล
 - ถ้ามีข้อมูลใน <conflicts> ให้ใช้ตามนั้น ห้ามคำนวณเวลาชนเอง
-- วันเวลาปัจจุบันคือ ${nowBangkok} (เวลาไทย)
+- วันเวลาปัจจุบันคือ ${nowBangkok} (เวลาไทย) ห้ามเดาวันในสัปดาห์เอง ให้ใช้วันที่ระบุไว้เท่านั้น
+${targetDate ? `- วันที่ผู้ใช้ถามถึงคือ ${targetDate} (${weekdayTh(targetDate)}) ให้ใช้กิจวัตรใน <routine> เฉพาะที่ตรงกับวันนี้ในสัปดาห์` : "- ถ้าไม่ระบุวัน ให้ตอบกิจวัตรพร้อมระบุวันในสัปดาห์ที่เกี่ยวข้อง"}
 - ตอนตอบว่า "ไปงานนี้ได้ไหม" ให้เทียบเวลากับกิจกรรมอื่นในวันนั้น
   แล้วบอกตรง ๆ ว่าไปได้หรือชนกับอะไร และถ้าชน ให้บอกว่างานไหนสำคัญกว่าตามคอลัมน์ priority
 - ถ้าถูกขอให้ตั้งเตือน และระบบเตือนยังไม่เปิดใช้ ให้บอกตรง ๆ ว่ายูตะยังตั้งเตือนให้ไม่ได้ในตอนนี้
@@ -143,6 +145,7 @@ export async function askYuta(args: {
   routines?: SheetRow[];
   faqs?: SheetRow[];
   nowBangkok: string;
+  targetDate?: string;
 }): Promise<YutaResult> {
   try {
     const response = await getClient().models.generateContent({
