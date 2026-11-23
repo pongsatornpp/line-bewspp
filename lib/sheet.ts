@@ -68,6 +68,8 @@ export function resolveQuestionDate(question: string, now: Date = new Date()): s
   const today = todayBangkok(now);
   const iso = question.match(/(\d{4})-(\d{1,2})-(\d{1,2})/);
   if (iso) return `${iso[1]}-${iso[2].padStart(2, "0")}-${iso[3].padStart(2, "0")}`;
+  if (question.includes("เมื่อวานซืน")) return addDays(today, -2);
+  if (question.includes("เมื่อวาน")) return addDays(today, -1);
   if (question.includes("มะรืน")) return addDays(today, 2);
   if (question.includes("พรุ่งนี้")) return addDays(today, 1);
   if (question.includes("วันนี้")) return today;
