@@ -12,9 +12,11 @@ export type SheetRow = {
   priority: string;
   note: string;
   who: string;
+  /** Weekdays (0=Sun..6=Sat) for recurring rows like "วัน จ - ศ"; empty for dated rows. */
+  days: number[];
 };
 
-export type SheetData = { events: SheetRow[]; faqs: SheetRow[] };
+export type SheetData = { events: SheetRow[]; routines: SheetRow[]; faqs: SheetRow[] };
 
 // ---------- Bangkok time helpers ----------
 
@@ -152,7 +154,7 @@ function splitTime(raw: string, endRaw: string): { start: string; end: string } 
 }
 
 // Accepts the original English headers plus the sheet's actual ones (Time/Date/Activity/Location/With/Priority).
-const ALIASES: Record<keyof SheetRow, string[]> = {
+const ALIASES: Record<Exclude<keyof SheetRow, "days">, string[]> = {
   type: ["type", "ประเภท"],
   date: ["date", "วันที่", "วัน"],
   start: ["start", "time", "เวลา", "เวลาเริ่ม"],
@@ -164,22 +166,62 @@ const ALIASES: Record<keyof SheetRow, string[]> = {
   who: ["with", "กับ", "ไปกับ"],
 };
 
+const DAY_INDEX: Record<string, number> = { อา: 0, จ: 1, อ: 2, พ: 3, พฤ: 4, ศ: 5, ส: 6 };
+
+/** "วัน จ - ศ", "จ,พ,ศ", "เสาร์-อาทิตย์", "ทุกวัน" -> weekday numbers. Empty if not a weekday pattern. */
+function parseDays(raw: string): number[] {
+  let v = raw.trim().replace(/\s+/g, "");
+  if (/^(ทุกวัน|everyday|daily)$/i.test(v)) return [0, 1, 2, 3, 4, 5, 6];
+  v = v
+    .replace(/^วัน/, "")
+    .replace(/ทุก/g, "")
+    .replace(/วัน/g, "")
+    .replace(/จันทร์/g, "จ")
+    .replace(/อังคาร/g, "อ")
+    .replace(/พุธ/g, "พ")
+    .replace(/พฤหัสบดี|พฤหัส/g, "พฤ")
+    .replace(/ศุกร์/g, "ศ")
+    .replace(/เสาร์/g, "ส")
+    .replace(/อาทิตย์/g, "อา");
+  if (!/^(พฤ|อา|จ|อ|พ|ศ|ส|[-–—,และถึง])+$/.test(v)) return [];
+  const range = v.match(/^(พฤ|อา|จ|อ|พ|ศ|ส)[-–—ถึง](พฤ|อา|จ|อ|พ|ศ|ส)$/);
+  if (range) {
+    const out: number[] = [];
+    let d = DAY_INDEX[range[1]];
+    const end = DAY_INDEX[range[2]];
+    for (let i = 0; i < 7; i++) {
+      out.push(d);
+      if (d === end) break;
+      d = (d + 1) % 7;
+    }
+    return out;
+  }
+  const tokens = v.match(/พฤ|อา|จ|อ|พ|ศ|ส/g) ?? [];
+  return Array.from(new Set(tokens.map((t) => DAY_INDEX[t])));
+}
+
 function toRows(csv: string): SheetRow[] {
   const table = parseCsv(csv);
   if (table.length === 0) return [];
   const header = table[0].map((h) => h.trim().toLowerCase());
-  const col = (field: keyof SheetRow) =>
+  const col = (field: keyof typeof ALIASES) =>
     header.findIndex((h) => ALIASES[field].includes(h));
   const idx = Object.fromEntries(
-    (Object.keys(ALIASES) as (keyof SheetRow)[]).map((f) => [f, col(f)]),
-  ) as Record<keyof SheetRow, number>;
+    (Object.keys(ALIASES) as (keyof typeof ALIASES)[]).map((f) => [f, col(f)]),
+  ) as Record<keyof typeof ALIASES, number>;
 
   return table.slice(1).map((cells) => {
-    const get = (f: keyof SheetRow) => (idx[f] >= 0 ? (cells[idx[f]] ?? "").trim() : "");
+    const get = (f: keyof typeof ALIASES) => (idx[f] >= 0 ? (cells[idx[f]] ?? "").trim() : "");
     const { start, end } = splitTime(get("start"), get("end"));
-    const date = normalizeDate(get("date"));
-    // No `type` column (or blank): a row with a date is an event.
-    const type = get("type").toLowerCase() || (date ? "event" : "");
+    const rawDate = get("date");
+    let date = normalizeDate(rawDate);
+    let days: number[] = [];
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      days = parseDays(rawDate);
+      date = "";
+    }
+    // No `type` column (or blank): a row with a date or weekdays is an event.
+    const type = get("type").toLowerCase() || (date || days.length > 0 ? "event" : "");
     return {
       type,
       date,
@@ -191,6 +233,7 @@ function toRows(csv: string): SheetRow[] {
       priority: ({ "1": "สูง", "2": "กลาง", "3": "ต่ำ" } as Record<string, string>)[get("priority")] ?? get("priority"),
       note: get("note"),
       who: get("who"),
+      days,
     };
   });
 }
@@ -224,7 +267,8 @@ export async function loadSheet(): Promise<SheetData> {
       types: Array.from(new Set(rows.map((r) => r.type))).slice(0, 10),
     });
     const data: SheetData = {
-      events: rows.filter((r) => r.type === "event"),
+      events: rows.filter((r) => r.type === "event" && r.days.length === 0),
+      routines: rows.filter((r) => r.type === "event" && r.days.length > 0),
       faqs: rows.filter((r) => r.type === "faq"),
     };
     cache = { at: now, data };

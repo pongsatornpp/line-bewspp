@@ -35,6 +35,28 @@ function formatEvents(events: SheetRow[]): string {
     .replace(/.*/s, toMama);
 }
 
+const DAY_NAMES = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
+
+function formatRoutines(routines: SheetRow[]): string {
+  if (routines.length === 0) return "(ไม่มี)";
+  return toMama(
+    routines
+      .map((e) =>
+        [
+          e.days.length === 7 ? "ทุกวัน" : `ทุกวัน${e.days.map((d) => DAY_NAMES[d]).join(" ")}`,
+          [e.start, e.end].filter(Boolean).join("-"),
+          e.title,
+          e.place && !e.title.includes(e.place) && (/^(ที่|ออนไลน์)/.test(e.place) ? e.place : `ที่${e.place}`),
+          e.who && `กับ ${e.who}`,
+          e.note,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      )
+      .join("\n"),
+  );
+}
+
 function formatFaqs(faqs: SheetRow[]): string {
   if (faqs.length === 0) return "(ไม่มี)";
   return faqs.map((f) => `${f.title}: ${f.note}`).join("\n");
@@ -44,10 +66,11 @@ function buildPrompt(args: {
   question: string;
   callName: string;
   events: SheetRow[];
+  routines: SheetRow[];
   faqs: SheetRow[];
   nowBangkok: string;
 }): string {
-  const { question, callName, events, faqs, nowBangkok } = args;
+  const { question, callName, events, routines, faqs, nowBangkok } = args;
   const conflicts = findConflicts(events);
   return `<role>
 คุณคือ "ยูตะ" สุนัขผู้จัดการส่วนตัว ทำตัวเป็นลูกชายที่น่ารักและพึ่งพาได้
@@ -56,7 +79,7 @@ function buildPrompt(args: {
 </role>
 
 <constraints>
-- ตอบโดยใช้ข้อมูลใน <schedule> และ <faq> เท่านั้น
+- ตอบโดยใช้ข้อมูลใน <schedule>, <routine> (กิจวัตรที่ทำซ้ำทุกสัปดาห์) และ <faq> เท่านั้น
 - ห้ามแต่งเวลา สถานที่ ชื่อกิจกรรม หรือรายละเอียดที่ไม่มีในข้อมูล
 - ถ้ามีข้อมูลใน <conflicts> ให้ใช้ตามนั้น ห้ามคำนวณเวลาชนเอง
 - วันเวลาปัจจุบันคือ ${nowBangkok} (เวลาไทย)
@@ -90,6 +113,10 @@ function buildPrompt(args: {
 ${formatEvents(events)}
 </schedule>
 
+<routine>
+${formatRoutines(routines)}
+</routine>
+
 <faq>
 ${formatFaqs(faqs)}
 </faq>
@@ -113,13 +140,14 @@ export async function askYuta(args: {
   question: string;
   callName: string;
   events: SheetRow[];
+  routines?: SheetRow[];
   faqs?: SheetRow[];
   nowBangkok: string;
 }): Promise<YutaResult> {
   try {
     const response = await getClient().models.generateContent({
       model: GEMINI_MODEL,
-      contents: buildPrompt({ ...args, faqs: args.faqs ?? [] }),
+      contents: buildPrompt({ ...args, routines: args.routines ?? [], faqs: args.faqs ?? [] }),
       config: {
         temperature: 1.0,
         maxOutputTokens: 1024,
