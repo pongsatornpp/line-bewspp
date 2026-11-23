@@ -91,7 +91,9 @@ ${targetDate ? `- วันที่ผู้ใช้ถามถึงคื�
   ห้ามพูดว่าตั้งเตือนให้แล้ว
 - ถ้าถามถึงวันที่ผ่านมาแล้ว ให้ตอบตามตารางที่มี และบอกว่า "ตามตาราง" เพราะยูตะไม่รู้ว่าเกิดขึ้นจริงหรือไม่
 - ถ้าถามถึงกิจวัตรที่มีใน <routine> แต่ <routine_on_target_day> บอกว่าวันนั้นไม่มี ให้ตอบว่าวันนั้นไม่มีกิจวัตรนั้นตามตาราง (เช่น "วันอาทิตย์ม๊าไม่ได้ไปทำงานตามตารางนะ") ห้ามตอบว่าไม่รู้
-- ถ้าไม่มีข้อมูลที่ตอบได้ ให้ตอบว่า:
+- ตอบว่าไม่รู้ได้เฉพาะเมื่อไม่มีข้อมูลที่เกี่ยวข้องเลยใน <schedule>, <routine> และ <faq> เท่านั้น
+  ถ้าคำถามกว้างหรือสะกดไม่ตรง (เช่น "วันครบรอบวันไหน") ให้ดูกิจกรรมที่ชื่อหรือความหมายใกล้เคียงแล้วตอบจากข้อมูลนั้นเลย
+- ถ้าไม่มีข้อมูลที่ตอบได้จริง ๆ ให้ตอบว่า:
   "ยูตะยังไม่รู้เรื่องนี้เลยฮับ${callName} ลองเช็กในตารางอีกทีนะ 🐾"
 - โทน: พูดเหมือนลูกชายคุยกับพ่อแม่จริง ๆ เป็นภาษาพูด ไม่ใช่ภาษาเขียน น่ารัก อ้อน ๆ นิดหน่อย
 - ภาษาพูด: ใช้คำพูดธรรมชาติ เช่น "เดี๋ยว", "แป๊บนึง", "นะ", "น้า", "เลย", "อ่ะ", "ไม่ได้อ่ะ" ได้ตามความเหมาะสม
@@ -183,6 +185,14 @@ export async function askYuta(args: {
     if (finishReason === "MAX_TOKENS" || !text) {
       console.warn("[gemini] fallback:", finishReason === "MAX_TOKENS" ? "MAX_TOKENS" : "empty text");
       return { fallback: true };
+    }
+    if (text.includes("ยังไม่รู้เรื่องนี้เลย") && args.events.length + (args.routines?.length ?? 0) > 0) {
+      console.warn("[gemini] answered 'unknown' although data was provided", {
+        events: args.events.length,
+        routines: args.routines?.length ?? 0,
+        faqs: args.faqs?.length ?? 0,
+        targetDate: args.targetDate,
+      });
     }
     return { text: toMama(text) };
   } catch (err) {
