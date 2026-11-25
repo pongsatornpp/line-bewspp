@@ -16,6 +16,8 @@ export type SheetRow = {
   days: number[];
   /** Day of month (1-31) for monthly rows like "23 ของทุกเดือน"; 0 if not monthly. */
   monthDay: number;
+  /** Last day of a monthly range like "16-25 ของทุกเดือน" (monthDay is the first day); 0 for a single day. */
+  monthDayEnd: number;
   /** Sheet "Type" column: a free-form category such as All / Wedding ("faq" marks FAQ rows). */
   category: string;
   status: string;
@@ -185,7 +187,7 @@ function splitTime(raw: string, endRaw: string): { start: string; end: string } 
 }
 
 // Accepts the original English headers plus the sheet's actual ones (Time/Date/Activity/Location/With/Priority).
-const ALIASES: Record<Exclude<keyof SheetRow, "days" | "monthDay" | "category" | "endDate" | "priorityRank">, string[]> = {
+const ALIASES: Record<Exclude<keyof SheetRow, "days" | "monthDay" | "monthDayEnd" | "category" | "endDate" | "priorityRank">, string[]> = {
   type: ["type", "ประเภท"],
   date: ["date", "วันที่", "วัน"],
   start: ["start", "time", "เวลา", "เวลาเริ่ม"],
@@ -262,11 +264,16 @@ function toRows(csv: string): SheetRow[] {
     let date = normalizeDate(rawDate);
     let days: number[] = [];
     let monthDay = 0;
+    let monthDayEnd = 0;
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      const mr = rawDate.match(/(\d{1,2})\s*(?:-|–|—|ถึง)\s*(\d{1,2})\s*ของ?ทุกเดือน/);
       const md = rawDate.match(/(\d{1,2})\s*ของ?ทุกเดือน|ทุกเดือน(?:วันที่)?\s*(\d{1,2})|ทุกวันที่\s*(\d{1,2})/);
-      const n = md ? Number(md[1] ?? md[2] ?? md[3]) : 0;
-      if (n >= 1 && n <= 31) monthDay = n;
-      else days = parseDays(rawDate);
+      const n = mr ? Number(mr[1]) : md ? Number(md[1] ?? md[2] ?? md[3]) : 0;
+      if (n >= 1 && n <= 31) {
+        monthDay = n;
+        const e = mr ? Number(mr[2]) : 0;
+        if (e > n && e <= 31) monthDayEnd = e;
+      } else days = parseDays(rawDate);
       date = "";
     }
     // The sheet's "Type" column is a free-form category (All / Wedding ...); only "faq" changes the row kind.
@@ -287,6 +294,7 @@ function toRows(csv: string): SheetRow[] {
       who: get("who"),
       days,
       monthDay,
+      monthDayEnd,
       endDate,
       priorityRank: (() => {
         const raw = get("priority");
@@ -430,6 +438,16 @@ export function rowsForQuestionCategory(question: string, rows: SheetRow[]): She
 }
 
 /** Status values that mean "already done / visited". */
+/** Does day-of-month `day` fall on this monthly row (single day or range)? */
+export function monthlyCovers(r: SheetRow, day: number): boolean {
+  return r.monthDay > 0 && day >= r.monthDay && day <= (r.monthDayEnd || r.monthDay);
+}
+
+/** Thai label such as "ทุกวันที่ 23 ของเดือน" or "ทุกวันที่ 16-25 ของเดือน". */
+export function monthlyLabel(r: SheetRow): string {
+  return r.monthDayEnd ? `ทุกวันที่ ${r.monthDay}-${r.monthDayEnd} ของเดือน` : `ทุกวันที่ ${r.monthDay} ของเดือน`;
+}
+
 export const isDoneStatus = (status: string) =>
   /^(done|completed?|complete|finished?|visited|success(ful)?|yes|y|true|ok|✓|✔|ไปแล้ว|ไปมาแล้ว|เสร็จ|เสร็จแล้ว|เสร็จสิ้น|สำเร็จ|เรียบร้อย|เรียบร้อยแล้ว|ทำแล้ว|ทำเสร็จแล้ว)$/i.test(
     status.trim(),

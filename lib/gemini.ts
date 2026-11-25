@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { ReminderRequest } from "./reminders";
 import type { SheetRow } from "./sheet";
-import { findConflicts, isDoneStatus, nextMonthlyOccurrence, todayBangkok, weekdayIndex, weekdayTh } from "./sheet";
+import { findConflicts, isDoneStatus, monthlyCovers, monthlyLabel, nextMonthlyOccurrence, todayBangkok, weekdayIndex, weekdayTh } from "./sheet";
 
 // Single source of truth for the model name. Do not change without asking the owner.
 export const GEMINI_MODEL = "gemini-3.5-flash-lite";
@@ -34,7 +34,7 @@ function atPlace(place: string): string {
 export function focusFallbackText(focus: SheetRow[], callName: string): string {
   const lines = focus.slice(0, 8).map((f) => {
     const when = f.monthDay > 0
-      ? `ทุกวันที่ ${f.monthDay} ของเดือน`
+      ? monthlyLabel(f)
       : f.days.length > 0
         ? `ทุก${f.days.length === 7 ? "วัน" : f.days.map((d) => DAY_NAMES[d]).join(" ")}`
         : f.endDate
@@ -102,8 +102,13 @@ function formatRoutines(routines: SheetRow[]): string {
         [
           e.monthDay > 0
             ? (() => {
-                const next = nextMonthlyOccurrence(e.monthDay, todayBangkok());
-                return `ทุกเดือนวันที่ ${e.monthDay} (ครั้งถัดไป ${next.slice(8, 10)}/${next.slice(5, 7)} ${weekdayTh(next)})`;
+                const today = todayBangkok();
+                const dayNow = Number(today.slice(8, 10));
+                if (monthlyCovers(e, dayNow) && e.monthDayEnd) {
+                  return `${monthlyLabel(e)} (ตอนนี้อยู่ในช่วงนี้ ถึงวันที่ ${e.monthDayEnd})`;
+                }
+                const next = nextMonthlyOccurrence(e.monthDay, today);
+                return `${monthlyLabel(e)} (ครั้งถัดไป ${next.slice(8, 10)}/${next.slice(5, 7)} ${weekdayTh(next)})`;
               })()
             : e.days.length === 7
               ? "ทุกวัน"
@@ -206,7 +211,7 @@ ${
 ${targetDate} (${weekdayTh(targetDate)}) มีกิจวัตร: ${
         formatRoutines(
           routines.filter(
-            (r) => r.days.includes(weekdayIndex(targetDate)) || r.monthDay === Number(targetDate.slice(8, 10)),
+            (r) => r.days.includes(weekdayIndex(targetDate)) || monthlyCovers(r, Number(targetDate.slice(8, 10))),
           ),
         ).replace("(ไม่มี)", "ไม่มี") 
       }

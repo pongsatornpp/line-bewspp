@@ -1,5 +1,5 @@
 import type { SheetData, SheetRow } from "./sheet";
-import { addDays, isDoneStatus, todayBangkok, weekdayTh } from "./sheet";
+import { addDays, isDoneStatus, monthlyLabel, todayBangkok, weekdayTh } from "./sheet";
 
 const DAY_NAMES = ["อาทิตย์", "จันทร์", "อังคาร", "พุธ", "พฤหัสบดี", "ศุกร์", "เสาร์"];
 const PARTNER_WORDS = /ม๊า|มะม๊า|เอม/;
@@ -26,7 +26,7 @@ export function importantRows(sheet: SheetData, question: string, today = todayB
 }
 
 function whenLabel(r: SheetRow, today: string): string {
-  if (r.monthDay > 0) return `ทุกวันที่ ${r.monthDay} ของเดือน`;
+  if (r.monthDay > 0) return monthlyLabel(r);
   if (r.days.length > 0) return r.days.length === 7 ? "ทุกวัน" : `ทุก${r.days.map((d) => DAY_NAMES[d]).join(" ")}`;
   if (!r.date) return "ยังไม่กำหนดวัน";
   const dm = (d: string) => `${d.slice(8, 10)}/${d.slice(5, 7)}`;
