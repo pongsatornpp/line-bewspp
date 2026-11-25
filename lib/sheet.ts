@@ -326,6 +326,7 @@ export async function loadSheet(): Promise<SheetData> {
       header: parseCsv(text)[0]?.map((h) => h.trim().slice(0, 30)),
       totalRows: rows.length,
       types: Array.from(new Set(rows.map((r) => r.type))).slice(0, 10),
+      statuses: Array.from(new Set(rows.map((r) => r.status.slice(0, 20)))).slice(0, 10),
     });
     const data: SheetData = {
       events: rows.filter((r) => r.type === "event" && r.days.length === 0 && r.monthDay === 0),
