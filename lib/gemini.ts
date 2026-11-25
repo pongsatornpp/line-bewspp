@@ -15,6 +15,15 @@ export const NO_INFO_REPLY = (callName: string) =>
 
 const toMama = (t: string) => t.replaceAll("เอม", "มะม๊า");
 
+/** Status -> whether it's been visited/done. Blank means not yet. Decided in code, not by the model. */
+function statusLabel(status: string): string {
+  const s = status.trim();
+  if (!s) return "ยังไม่ได้ไป";
+  if (/^(done|ไปแล้ว|ไปมาแล้ว|เสร็จ|เสร็จแล้ว|visited|finished|yes|y|✓|✔|true)$/i.test(s)) return "ไปมาแล้ว";
+  if (/^(no|n|ยัง|ยังไม่ได้ไป|ยังไม่เสร็จ|pending|todo|false)$/i.test(s)) return "ยังไม่ได้ไป";
+  return `ไปมาแล้วหรือยัง: ${s}`;
+}
+
 function formatTasks(tasks: SheetRow[]): string {
   if (tasks.length === 0) return "(ไม่มี)";
   return toMama(
@@ -23,7 +32,7 @@ function formatTasks(tasks: SheetRow[]): string {
         [
           t.title,
           t.category && !/^all$/i.test(t.category) && `หมวด ${t.category}`,
-          t.status ? `สถานะ ${t.status}` : "สถานะ ยังไม่ระบุ",
+          `สถานะ: ${statusLabel(t.status)}`,
           t.priority && `ความสำคัญ${t.priority}`,
           t.place && `ที่${t.place}`,
           t.who && `กับ ${t.who}`,
@@ -47,7 +56,7 @@ function formatEvents(events: SheetRow[]): string {
         e.place && !e.title.includes(e.place) && (/^(ที่|ออนไลน์)/.test(e.place) ? e.place : `ที่${e.place}`),
         e.who && `กับ ${e.who}`,
         e.priority && `ความสำคัญ${e.priority}`,
-        e.status && `สถานะ ${e.status}`,
+        e.category && /wedding/i.test(e.category) ? `สถานะ: ${statusLabel(e.status)}` : e.status && `สถานะ ${e.status}`,
         e.note,
       ]
         .filter(Boolean)
@@ -123,6 +132,7 @@ ${targetDate ? `- วันที่ผู้ใช้ถามถึงคื�
 - ถ้าถามถึงวันที่ผ่านมาแล้ว ให้ตอบตามตารางที่มี และบอกว่า "ตามตาราง" เพราะยูตะไม่รู้ว่าเกิดขึ้นจริงหรือไม่
 - ถ้าถามถึงกิจวัตรที่มีใน <routine> แต่ <routine_on_target_day> บอกว่าวันนั้นไม่มี ให้ตอบว่าวันนั้นไม่มีกิจวัตรนั้นตามตาราง (เช่น "วันอาทิตย์ม๊าไม่ได้ไปทำงานตามตารางนะ") ห้ามตอบว่าไม่รู้
 - ถ้าถามกว้าง ๆ ว่ามีกิจกรรมอะไรบ้าง ให้ลิสต์กิจกรรมที่มีวันที่ใน <schedule> ให้ครบทุกรายการ
+- ถ้าถามเรื่องแต่งงาน และ <focus> มีรายการหมวด Wedding ให้ลิสต์ทุกรายการใน <focus> พร้อมบอกว่า "ไปมาแล้ว" หรือ "ยังไม่ได้ไป" ตามสถานะที่ระบุ ห้ามเดาเอง
 - ถ้ามี <focus> แปลว่าผู้ใช้ถามถึงรายการนั้นโดยตรง ให้ตอบเฉพาะรายการใน <focus> ห้ามพูดถึงกิจกรรมอื่น ถ้าถามว่า "วันไหน" ให้ตอบแค่วันสั้น ๆ ถ้าเป็นรายการที่ทำซ้ำ ให้บอกรูปแบบก่อน เช่น "ทุกวันที่ 23 ของเดือนฮับป๊า" แล้วค่อยบอกครั้งถัดไป
 - ถ้าถามว่ามีอะไรต้องทำ/ค้างอยู่ ให้รวมรายการใน <tasks> ที่สถานะยังไม่เสร็จ (ไม่ใช่ done/เสร็จ/finished) ด้วย โดยบอกว่ายังไม่ได้กำหนดวัน
 - ตอบว่าไม่รู้ได้เฉพาะเมื่อไม่มีข้อมูลที่เกี่ยวข้องเลยใน <schedule>, <routine> และ <faq> เท่านั้น
@@ -185,7 +195,8 @@ ${
     ? `
 <focus>
 ${formatRoutines(focus.filter((f) => f.monthDay > 0 || f.days.length > 0))}
-${formatEvents(focus.filter((f) => f.monthDay === 0 && f.days.length === 0)).replace("(ไม่มีกิจกรรม)", "")}
+${formatTasks(focus.filter((f) => f.type === "task")).replace("(ไม่มี)", "")}
+${formatEvents(focus.filter((f) => f.type !== "task" && f.monthDay === 0 && f.days.length === 0)).replace("(ไม่มีกิจกรรม)", "")}
 </focus>
 `
     : ""
