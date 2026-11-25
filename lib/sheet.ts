@@ -16,9 +16,18 @@ export type SheetRow = {
   days: number[];
   /** Day of month (1-31) for monthly rows like "23 ของทุกเดือน"; 0 if not monthly. */
   monthDay: number;
+  /** Sheet "Type" column: a free-form category such as All / Wedding ("faq" marks FAQ rows). */
+  category: string;
+  status: string;
 };
 
-export type SheetData = { events: SheetRow[]; routines: SheetRow[]; faqs: SheetRow[] };
+export type SheetData = {
+  events: SheetRow[];
+  routines: SheetRow[];
+  /** Rows with no date/weekday pattern, e.g. "Found Venue" (to-dos). */
+  tasks: SheetRow[];
+  faqs: SheetRow[];
+};
 
 // ---------- Bangkok time helpers ----------
 
@@ -172,7 +181,7 @@ function splitTime(raw: string, endRaw: string): { start: string; end: string } 
 }
 
 // Accepts the original English headers plus the sheet's actual ones (Time/Date/Activity/Location/With/Priority).
-const ALIASES: Record<Exclude<keyof SheetRow, "days" | "monthDay">, string[]> = {
+const ALIASES: Record<Exclude<keyof SheetRow, "days" | "monthDay" | "category">, string[]> = {
   type: ["type", "ประเภท"],
   date: ["date", "วันที่", "วัน"],
   start: ["start", "time", "เวลา", "เวลาเริ่ม"],
@@ -182,6 +191,7 @@ const ALIASES: Record<Exclude<keyof SheetRow, "days" | "monthDay">, string[]> = 
   priority: ["priority", "ความสำคัญ"],
   note: ["note", "notes", "หมายเหตุ"],
   who: ["with", "กับ", "ไปกับ"],
+  status: ["status", "สถานะ"],
 };
 
 const DAY_INDEX: Record<string, number> = { อา: 0, จ: 1, อ: 2, พ: 3, พฤ: 4, ศ: 5, ส: 6 };
@@ -246,8 +256,11 @@ function toRows(csv: string): SheetRow[] {
       else days = parseDays(rawDate);
       date = "";
     }
-    // No `type` column (or blank): a row with a date or weekdays is an event.
-    const type = get("type").toLowerCase() || (date || days.length > 0 || monthDay > 0 ? "event" : "");
+    // The sheet's "Type" column is a free-form category (All / Wedding ...); only "faq" changes the row kind.
+    const category = get("type");
+    const hasWhen = date !== "" || days.length > 0 || monthDay > 0;
+    const type =
+      category.toLowerCase() === "faq" ? "faq" : hasWhen ? "event" : get("title") ? "task" : "";
     return {
       type,
       date,
@@ -261,6 +274,8 @@ function toRows(csv: string): SheetRow[] {
       who: get("who"),
       days,
       monthDay,
+      category: category.toLowerCase() === "faq" ? "" : category,
+      status: get("status"),
     };
   });
 }
@@ -296,6 +311,7 @@ export async function loadSheet(): Promise<SheetData> {
     const data: SheetData = {
       events: rows.filter((r) => r.type === "event" && r.days.length === 0 && r.monthDay === 0),
       routines: rows.filter((r) => r.type === "event" && (r.days.length > 0 || r.monthDay > 0)),
+      tasks: rows.filter((r) => r.type === "task"),
       faqs: rows.filter((r) => r.type === "faq"),
     };
     cache = { at: now, data };

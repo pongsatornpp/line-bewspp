@@ -125,9 +125,10 @@ async function handleEvent(client: messagingApi.MessagingApiClient, event: webho
       callName,
       events,
       routines: sheet.routines,
+      tasks: sheet.tasks,
       targetDate: date ?? undefined,
       // Rows whose whole title appears in the question ("วันครบรอบ…") -> answer only about those.
-      focus: [...sheet.routines, ...sheet.events].filter((e) => e.title.length >= 3 && question.includes(e.title)),
+      focus: [...sheet.routines, ...sheet.tasks, ...sheet.events].filter((e) => e.title.length >= 3 && question.includes(e.title)),
       faqs: sheet.faqs,
       nowBangkok: nowBangkokString(),
     });

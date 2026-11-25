@@ -15,6 +15,27 @@ export const NO_INFO_REPLY = (callName: string) =>
 
 const toMama = (t: string) => t.replaceAll("เอม", "มะม๊า");
 
+function formatTasks(tasks: SheetRow[]): string {
+  if (tasks.length === 0) return "(ไม่มี)";
+  return toMama(
+    tasks
+      .map((t) =>
+        [
+          t.title,
+          t.category && !/^all$/i.test(t.category) && `หมวด ${t.category}`,
+          t.status ? `สถานะ ${t.status}` : "สถานะ ยังไม่ระบุ",
+          t.priority && `ความสำคัญ${t.priority}`,
+          t.place && `ที่${t.place}`,
+          t.who && `กับ ${t.who}`,
+          t.note,
+        ]
+          .filter(Boolean)
+          .join(" "),
+      )
+      .join("\n"),
+  );
+}
+
 function formatEvents(events: SheetRow[]): string {
   if (events.length === 0) return "(ไม่มีกิจกรรม)";
   return events
@@ -26,6 +47,7 @@ function formatEvents(events: SheetRow[]): string {
         e.place && !e.title.includes(e.place) && (/^(ที่|ออนไลน์)/.test(e.place) ? e.place : `ที่${e.place}`),
         e.who && `กับ ${e.who}`,
         e.priority && `ความสำคัญ${e.priority}`,
+        e.status && `สถานะ ${e.status}`,
         e.note,
       ]
         .filter(Boolean)
@@ -74,12 +96,13 @@ function buildPrompt(args: {
   callName: string;
   events: SheetRow[];
   routines: SheetRow[];
+  tasks: SheetRow[];
   faqs: SheetRow[];
   nowBangkok: string;
   targetDate?: string;
   focus?: SheetRow[];
 }): string {
-  const { question, callName, events, routines, faqs, nowBangkok, targetDate, focus = [] } = args;
+  const { question, callName, events, routines, tasks, faqs, nowBangkok, targetDate, focus = [] } = args;
   const conflicts = findConflicts(events);
   return `<role>
 คุณคือ "ยูตะ" สุนัขผู้จัดการส่วนตัว ทำตัวเป็นลูกชายที่น่ารักและพึ่งพาได้
@@ -88,7 +111,7 @@ function buildPrompt(args: {
 </role>
 
 <constraints>
-- ตอบโดยใช้ข้อมูลใน <schedule>, <routine> (กิจวัตรที่ทำซ้ำทุกสัปดาห์) และ <faq> เท่านั้น
+- ตอบโดยใช้ข้อมูลใน <schedule>, <routine> (กิจวัตรที่ทำซ้ำ), <tasks> (งานที่ยังไม่มีวันที่ เช่น สิ่งที่ต้องทำ) และ <faq> เท่านั้น
 - ห้ามแต่งเวลา สถานที่ ชื่อกิจกรรม หรือรายละเอียดที่ไม่มีในข้อมูล
 - ถ้ามีข้อมูลใน <conflicts> ให้ใช้ตามนั้น ห้ามคำนวณเวลาชนเอง
 - วันเวลาปัจจุบันคือ ${nowBangkok} (เวลาไทย) ห้ามเดาวันในสัปดาห์เอง ให้ใช้วันที่ระบุไว้เท่านั้น
@@ -101,6 +124,7 @@ ${targetDate ? `- วันที่ผู้ใช้ถามถึงคื�
 - ถ้าถามถึงกิจวัตรที่มีใน <routine> แต่ <routine_on_target_day> บอกว่าวันนั้นไม่มี ให้ตอบว่าวันนั้นไม่มีกิจวัตรนั้นตามตาราง (เช่น "วันอาทิตย์ม๊าไม่ได้ไปทำงานตามตารางนะ") ห้ามตอบว่าไม่รู้
 - ถ้าถามกว้าง ๆ ว่ามีกิจกรรมอะไรบ้าง ให้ลิสต์กิจกรรมที่มีวันที่ใน <schedule> ให้ครบทุกรายการ
 - ถ้ามี <focus> แปลว่าผู้ใช้ถามถึงรายการนั้นโดยตรง ให้ตอบเฉพาะรายการใน <focus> ห้ามพูดถึงกิจกรรมอื่น ถ้าถามว่า "วันไหน" ให้ตอบแค่วันสั้น ๆ ถ้าเป็นรายการที่ทำซ้ำ ให้บอกรูปแบบก่อน เช่น "ทุกวันที่ 23 ของเดือนฮับป๊า" แล้วค่อยบอกครั้งถัดไป
+- ถ้าถามว่ามีอะไรต้องทำ/ค้างอยู่ ให้รวมรายการใน <tasks> ที่สถานะยังไม่เสร็จ (ไม่ใช่ done/เสร็จ/finished) ด้วย โดยบอกว่ายังไม่ได้กำหนดวัน
 - ตอบว่าไม่รู้ได้เฉพาะเมื่อไม่มีข้อมูลที่เกี่ยวข้องเลยใน <schedule>, <routine> และ <faq> เท่านั้น
   ถ้าคำถามกว้างหรือสะกดไม่ตรง (เช่น "วันครบรอบวันไหน") ให้ดูกิจกรรมที่ชื่อหรือความหมายใกล้เคียงแล้วตอบจากข้อมูลนั้นเลย
 - ถ้าไม่มีข้อมูลที่ตอบได้จริง ๆ ให้ตอบว่า:
@@ -149,6 +173,10 @@ ${targetDate} (${weekdayTh(targetDate)}) มีกิจวัตร: ${
     : ""
 }
 
+<tasks>
+${formatTasks(tasks)}
+</tasks>
+
 <faq>
 ${formatFaqs(faqs)}
 </faq>
@@ -183,6 +211,7 @@ export async function askYuta(args: {
   callName: string;
   events: SheetRow[];
   routines?: SheetRow[];
+  tasks?: SheetRow[];
   faqs?: SheetRow[];
   nowBangkok: string;
   targetDate?: string;
@@ -191,7 +220,7 @@ export async function askYuta(args: {
   try {
     const response = await getClient().models.generateContent({
       model: GEMINI_MODEL,
-      contents: buildPrompt({ ...args, routines: args.routines ?? [], faqs: args.faqs ?? [] }),
+      contents: buildPrompt({ ...args, routines: args.routines ?? [], tasks: args.tasks ?? [], faqs: args.faqs ?? [] }),
       config: {
         temperature: 1.0,
         maxOutputTokens: 1024,
