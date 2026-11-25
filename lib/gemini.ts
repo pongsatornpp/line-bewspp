@@ -1,7 +1,7 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import type { ReminderRequest } from "./reminders";
 import type { SheetRow } from "./sheet";
-import { findConflicts, nextMonthlyOccurrence, todayBangkok, weekdayIndex, weekdayTh } from "./sheet";
+import { findConflicts, isDoneStatus, nextMonthlyOccurrence, todayBangkok, weekdayIndex, weekdayTh } from "./sheet";
 
 // Single source of truth for the model name. Do not change without asking the owner.
 export const GEMINI_MODEL = "gemini-3.5-flash-lite";
@@ -19,7 +19,7 @@ const toMama = (t: string) => t.replaceAll("เอม", "มะม๊า");
 function statusLabel(status: string): string {
   const s = status.trim();
   if (!s) return "ยังไม่ได้ไป";
-  if (/^(done|ไปแล้ว|ไปมาแล้ว|เสร็จ|เสร็จแล้ว|visited|finished|yes|y|✓|✔|true)$/i.test(s)) return "ไปมาแล้ว";
+  if (isDoneStatus(s)) return "ไปมาแล้ว";
   if (/^(no|n|ยัง|ยังไม่ได้ไป|ยังไม่เสร็จ|pending|todo|false)$/i.test(s)) return "ยังไม่ได้ไป";
   return `ไปมาแล้วหรือยัง: ${s}`;
 }
@@ -166,7 +166,7 @@ ${targetDate ? `- วันที่ผู้ใช้ถามถึงคื�
   "ห้ามลืมนะ สำคัญมาก ห้ามทำให้${otherParent}เสียใจนะ ไม่งั้นยูตะจะกัด${callName}แน่ 🐶" ต้องมีใจความครบ 3 ส่วนเสมอ คือ "ห้ามลืม/สำคัญมาก", "ห้ามทำให้${otherParent}เสียใจ" และ "ยูตะจะกัด${callName}" ปรับได้แค่คำเชื่อมนิดหน่อย และห้ามเอ่ยคำว่า "ความสำคัญสูง/กลาง/ต่ำ" ออกมา
   กิจกรรมที่ไม่มีคำว่า "ความสำคัญ" ไม่ต้องดุ
 - ถ้ามี <focus> แปลว่าผู้ใช้ถามถึงรายการนั้นโดยตรง ให้ตอบเฉพาะรายการใน <focus> ห้ามพูดถึงกิจกรรมอื่น ถ้าถามว่า "วันไหน" ให้ตอบแค่วันสั้น ๆ ถ้าเป็นรายการที่ทำซ้ำ ให้บอกรูปแบบก่อน เช่น "ทุกวันที่ 23 ของเดือนฮับป๊า" แล้วค่อยบอกครั้งถัดไป
-- ถ้าถามว่ามีอะไรต้องทำ/ค้างอยู่ ให้รวมรายการใน <tasks> ที่สถานะยังไม่เสร็จ (ไม่ใช่ done/เสร็จ/finished) ด้วย โดยบอกว่ายังไม่ได้กำหนดวัน
+- ถ้าถามว่ามีอะไรต้องทำ/ค้างอยู่ ให้รวมรายการใน <tasks> ที่สถานะยังไม่เสร็จ (ไม่ใช่ done/completed/เสร็จ/finished) ด้วย โดยบอกว่ายังไม่ได้กำหนดวัน
 - ตอบว่าไม่รู้ได้เฉพาะเมื่อไม่มีข้อมูลที่เกี่ยวข้องเลยใน <schedule>, <routine> และ <faq> เท่านั้น
   ถ้าคำถามกว้างหรือสะกดไม่ตรง (เช่น "วันครบรอบวันไหน") ให้ดูกิจกรรมที่ชื่อหรือความหมายใกล้เคียงแล้วตอบจากข้อมูลนั้นเลย
 - ถ้าไม่มีข้อมูลที่ตอบได้จริง ๆ ให้ตอบว่า:

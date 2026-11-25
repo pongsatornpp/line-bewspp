@@ -428,5 +428,8 @@ export function rowsForQuestionCategory(question: string, rows: SheetRow[]): She
   return rows.filter((r) => r.category && wanted.includes(r.category.trim().toLowerCase()) && r.title);
 }
 
+/** Status values that mean "already done / visited". */
 export const isDoneStatus = (status: string) =>
-  /^(done|ไปแล้ว|ไปมาแล้ว|เสร็จ|เสร็จแล้ว|visited|finished|yes|y|✓|✔|true)$/i.test(status.trim());
+  /^(done|completed?|complete|finished?|visited|success(ful)?|yes|y|true|ok|✓|✔|ไปแล้ว|ไปมาแล้ว|เสร็จ|เสร็จแล้ว|เสร็จสิ้น|สำเร็จ|เรียบร้อย|เรียบร้อยแล้ว|ทำแล้ว|ทำเสร็จแล้ว)$/i.test(
+    status.trim(),
+  );
