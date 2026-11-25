@@ -30,6 +30,26 @@ function atPlace(place: string): string {
   return /^[A-Za-z0-9]/.test(place) ? `ที่ ${place}` : `ที่${place}`;
 }
 
+/** Deterministic answer for focus rows, used when the model fails or wrongly says "unknown". */
+export function focusFallbackText(focus: SheetRow[], callName: string): string {
+  const lines = focus.slice(0, 8).map((f) => {
+    const when = f.monthDay > 0
+      ? `ทุกวันที่ ${f.monthDay} ของเดือน`
+      : f.days.length > 0
+        ? `ทุก${f.days.length === 7 ? "วัน" : f.days.map((d) => DAY_NAMES[d]).join(" ")}`
+        : f.endDate
+          ? `${f.date.slice(8, 10)}/${f.date.slice(5, 7)}-${f.endDate.slice(8, 10)}/${f.endDate.slice(5, 7)}`
+          : f.date
+            ? `${f.date.slice(8, 10)}/${f.date.slice(5, 7)}`
+            : "";
+    const status = f.category && !/^all$/i.test(f.category) ? statusLabel(f.status) : "";
+    return [when, f.start, f.title, f.place && !f.title.includes(f.place) ? atPlace(f.place) : "", status]
+      .filter(Boolean)
+      .join(" ");
+  });
+  return toMama(`ยูตะดูในตารางให้แล้วฮับ${callName}\n${lines.join("\n")} 🐾`);
+}
+
 function formatTasks(tasks: SheetRow[]): string {
   if (tasks.length === 0) return "(ไม่มี)";
   return toMama(
@@ -229,7 +249,7 @@ function getClient(): GoogleGenAI {
   return client;
 }
 
-export async function askYuta(args: {
+async function askModel(args: {
   question: string;
   callName: string;
   events: SheetRow[];
@@ -331,4 +351,16 @@ export async function parseReminderRequest(args: {
     console.error("[gemini] reminder parse failed:", { name: e?.name, message: e?.message?.slice(0, 200) });
     return null;
   }
+}
+
+/** Asks the model; if it fails or wrongly says "unknown" for a focused question, answer from the rows directly. */
+export async function askYuta(args: Parameters<typeof askModel>[0]): Promise<YutaResult> {
+  const result = await askModel(args);
+  const focus = args.focus ?? [];
+  if (focus.length === 0) return result;
+  if ("fallback" in result || result.text.includes("ยังไม่รู้เรื่องนี้เลย")) {
+    console.warn("[gemini] using code fallback for focus rows", { focus: focus.length });
+    return { text: focusFallbackText(focus, args.callName) };
+  }
+  return result;
 }
