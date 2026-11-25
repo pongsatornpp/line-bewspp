@@ -129,13 +129,15 @@ async function handleEvent(client: messagingApi.MessagingApiClient, event: webho
       byCategory.length > 0
         ? byCategory
         : allRows.filter((e) => e.title.length >= 3 && question.includes(e.title));
+    // A category question ("มีร้านอาหารอะไรบ้าง") answers only from that category; a title match keeps the other context.
+    const onlyFocus = byCategory.length > 0;
 
     const result = await askYuta({
       question,
       callName,
-      events: focus.length > 0 ? [] : events,
-      routines: focus.length > 0 ? [] : sheet.routines,
-      tasks: focus.length > 0 ? [] : sheet.tasks,
+      events: onlyFocus ? [] : events,
+      routines: onlyFocus ? [] : sheet.routines,
+      tasks: onlyFocus ? [] : sheet.tasks,
       targetDate: date ?? undefined,
       focus,
       faqs: sheet.faqs,

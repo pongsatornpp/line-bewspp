@@ -271,7 +271,12 @@ export async function askYuta(args: {
         targetDate: args.targetDate,
       });
     }
-    return { text: toMama(text) };
+    // Never mix a real answer with the "don't know" line: drop the stray line when other lines exist.
+    const NO_INFO = "ยังไม่รู้เรื่องนี้เลย";
+    const lines = text.split("\n");
+    const kept = lines.filter((l) => !l.includes(NO_INFO));
+    const cleaned = kept.length > 0 && kept.length < lines.length ? kept.join("\n").trim() : text;
+    return { text: toMama(cleaned) };
   } catch (err) {
     const e = err as { name?: string; status?: number; message?: string };
     console.error("[gemini] error:", { name: e?.name, status: e?.status, message: e?.message?.slice(0, 200) });
