@@ -21,6 +21,8 @@ export type SheetRow = {
   status: string;
   /** Last day of a multi-day range like "19/11/2026-13/12/2026" (date is the first day); "" for single-day rows. */
   endDate: string;
+  /** 1 = most important ... 99 = no priority. Numeric cells are used as-is; สูง/กลาง/ต่ำ map to 1/2/3. */
+  priorityRank: number;
 };
 
 export type SheetData = {
@@ -183,7 +185,7 @@ function splitTime(raw: string, endRaw: string): { start: string; end: string } 
 }
 
 // Accepts the original English headers plus the sheet's actual ones (Time/Date/Activity/Location/With/Priority).
-const ALIASES: Record<Exclude<keyof SheetRow, "days" | "monthDay" | "category" | "endDate">, string[]> = {
+const ALIASES: Record<Exclude<keyof SheetRow, "days" | "monthDay" | "category" | "endDate" | "priorityRank">, string[]> = {
   type: ["type", "ประเภท"],
   date: ["date", "วันที่", "วัน"],
   start: ["start", "time", "เวลา", "เวลาเริ่ม"],
@@ -286,6 +288,11 @@ function toRows(csv: string): SheetRow[] {
       days,
       monthDay,
       endDate,
+      priorityRank: (() => {
+        const raw = get("priority");
+        if (/^\d+$/.test(raw)) return Number(raw);
+        return ({ สูง: 1, กลาง: 2, ต่ำ: 3 } as Record<string, number>)[raw] ?? 99;
+      })(),
       category: category.toLowerCase() === "faq" ? "" : category,
       status: get("status"),
     };
@@ -420,3 +427,6 @@ export function rowsForQuestionCategory(question: string, rows: SheetRow[]): She
   if (wanted.length === 0) return [];
   return rows.filter((r) => r.category && wanted.includes(r.category.trim().toLowerCase()) && r.title);
 }
+
+export const isDoneStatus = (status: string) =>
+  /^(done|ไปแล้ว|ไปมาแล้ว|เสร็จ|เสร็จแล้ว|visited|finished|yes|y|✓|✔|true)$/i.test(status.trim());

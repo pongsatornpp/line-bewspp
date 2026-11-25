@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { messagingApi, validateSignature, webhook } from "@line/bot-sdk";
 import { askYuta, NO_INFO_REPLY, parseReminderRequest } from "@/lib/gemini";
+import { importantReply, importantRows } from "@/lib/important";
 import { addReminder, describeWhen, remindersEnabled, resolveReminder } from "@/lib/reminders";
 import {
   loadSheet,
@@ -103,6 +104,8 @@ async function handleEvent(client: messagingApi.MessagingApiClient, event: webho
     reply = await buildReminderReply(question, callName, event.source?.userId, sheet?.events ?? []);
   } else if (!sheet) {
     reply = `ตอนนี้ยูตะเปิดตารางไม่ได้ชั่วคราวฮับ${callName} ลองถามใหม่อีกสักครู่นะ 🐾`;
+  } else if (/นัดสำคัญ/.test(question)) {
+    reply = importantReply(importantRows(sheet, question), callName);
   } else {
     // Explicit date (or an event named in the question) -> that day.
     // Otherwise ("ตอนนี้มีอะไรบ้าง") -> everything from today through the next 7 days (Bangkok).
