@@ -19,6 +19,8 @@ export type SheetRow = {
   /** Sheet "Type" column: a free-form category such as All / Wedding ("faq" marks FAQ rows). */
   category: string;
   status: string;
+  /** Last day of a multi-day range like "19/11/2026-13/12/2026" (date is the first day); "" for single-day rows. */
+  endDate: string;
 };
 
 export type SheetData = {
@@ -181,7 +183,7 @@ function splitTime(raw: string, endRaw: string): { start: string; end: string } 
 }
 
 // Accepts the original English headers plus the sheet's actual ones (Time/Date/Activity/Location/With/Priority).
-const ALIASES: Record<Exclude<keyof SheetRow, "days" | "monthDay" | "category">, string[]> = {
+const ALIASES: Record<Exclude<keyof SheetRow, "days" | "monthDay" | "category" | "endDate">, string[]> = {
   type: ["type", "ประเภท"],
   date: ["date", "วันที่", "วัน"],
   start: ["start", "time", "เวลา", "เวลาเริ่ม"],
@@ -245,7 +247,16 @@ function toRows(csv: string): SheetRow[] {
       return /^[-–—]+$/.test(v) ? "" : v;
     };
     const { start, end } = splitTime(get("start"), get("end"));
-    const rawDate = get("date");
+    let rawDate = get("date");
+    let endDate = "";
+    const SLASH = "\\d{1,2}[/.]\\d{1,2}[/.]\\d{4}";
+    const ISO = "\\d{4}-\\d{1,2}-\\d{1,2}";
+    const range = rawDate.match(new RegExp(`^(${SLASH})\\s*(?:-|–|—|ถึง)\\s*(${SLASH})$`)) ??
+      rawDate.match(new RegExp(`^(${ISO})\\s*(?:-|–|—|ถึง|to|~)\\s*(${ISO})$`));
+    if (range) {
+      rawDate = range[1];
+      endDate = normalizeDate(range[2]);
+    }
     let date = normalizeDate(rawDate);
     let days: number[] = [];
     let monthDay = 0;
@@ -274,6 +285,7 @@ function toRows(csv: string): SheetRow[] {
       who: get("who"),
       days,
       monthDay,
+      endDate,
       category: category.toLowerCase() === "faq" ? "" : category,
       status: get("status"),
     };
@@ -337,9 +349,19 @@ function byStart(a: SheetRow, b: SheetRow): number {
   return (toMinutes(a.start) ?? 0) - (toMinutes(b.start) ?? 0);
 }
 
+/** True if the row happens on `date` (single day or inside its date range). */
+export function coversDate(e: SheetRow, date: string): boolean {
+  return e.endDate ? date >= e.date && date <= e.endDate : e.date === date;
+}
+
+/** True if the row has any day in [today, today+days]. */
+export function isUpcoming(e: SheetRow, today: string, days: number): boolean {
+  return (e.endDate || e.date) >= today && e.date <= addDays(today, days);
+}
+
 export async function getEventsForDate(date: string): Promise<SheetRow[]> {
   const { events } = await loadSheet();
-  return events.filter((e) => e.date === date).sort(byStart);
+  return events.filter((e) => coversDate(e, date)).sort(byStart);
 }
 
 function label(e: SheetRow): string {
@@ -381,4 +403,20 @@ export function nextMonthlyOccurrence(day: number, today: string): string {
     if (iso >= today) return iso;
   }
   return today;
+}
+
+const CATEGORY_KEYWORDS: Record<string, RegExp> = {
+  wedding: /แต่งงาน|งานแต่ง|วิวาห์|wedding/i,
+  food: /อาหาร|ร้านกิน|ของกิน|food/i,
+  cafe: /คาเฟ่|ร้านกาแฟ|cafe|café/i,
+  event: /อีเวนต์|อีเว้นท์|งานแสดง|คอนเสิร์ต|event/i,
+};
+
+/** Rows whose Type (category) matches what the question is about, e.g. "มีร้านอาหารอะไรบ้าง" -> Type=Food. */
+export function rowsForQuestionCategory(question: string, rows: SheetRow[]): SheetRow[] {
+  const wanted = Object.entries(CATEGORY_KEYWORDS)
+    .filter(([, re]) => re.test(question))
+    .map(([name]) => name);
+  if (wanted.length === 0) return [];
+  return rows.filter((r) => r.category && wanted.includes(r.category.trim().toLowerCase()) && r.title);
 }

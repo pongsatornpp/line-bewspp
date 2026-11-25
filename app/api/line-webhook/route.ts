@@ -7,7 +7,9 @@ import {
   nowBangkokString,
   resolveQuestionDate,
   todayBangkok,
-  addDays,
+  coversDate,
+  rowsForQuestionCategory,
+  isUpcoming,
   SheetUnavailableError,
 } from "@/lib/sheet";
 
@@ -110,7 +112,7 @@ async function handleEvent(client: messagingApi.MessagingApiClient, event: webho
       sheet.events.find((e) => e.title && question.includes(e.title))?.date ??
       null;
     const events = sheet.events
-      .filter((e) => (date ? e.date === date : e.date >= today && e.date <= addDays(today, 7)))
+      .filter((e) => (date ? coversDate(e, date) : isUpcoming(e, today, 7)))
       .sort((a, b) => a.date.localeCompare(b.date) || a.start.localeCompare(b.start));
 
     console.log("[sheet] rows", {
@@ -120,17 +122,22 @@ async function handleEvent(client: messagingApi.MessagingApiClient, event: webho
       matchedForDate: events.length,
     });
 
+    const allRows = [...sheet.routines, ...sheet.tasks, ...sheet.events];
+    const byCategory = rowsForQuestionCategory(question, allRows);
+    // Rows the user asked about directly (a category like Food/Wedding, or a whole title): answer only about those.
+    const focus =
+      byCategory.length > 0
+        ? byCategory
+        : allRows.filter((e) => e.title.length >= 3 && question.includes(e.title));
+
     const result = await askYuta({
       question,
       callName,
-      events,
-      routines: sheet.routines,
-      tasks: sheet.tasks,
+      events: focus.length > 0 ? [] : events,
+      routines: focus.length > 0 ? [] : sheet.routines,
+      tasks: focus.length > 0 ? [] : sheet.tasks,
       targetDate: date ?? undefined,
-      // Rows whose whole title appears in the question ("วันครบรอบ…") -> answer only about those.
-      focus: /แต่งงาน|งานแต่ง|วิวาห์|wedding/i.test(question)
-        ? [...sheet.routines, ...sheet.tasks, ...sheet.events].filter((e) => /wedding/i.test(e.category))
-        : [...sheet.routines, ...sheet.tasks, ...sheet.events].filter((e) => e.title.length >= 3 && question.includes(e.title)),
+      focus,
       faqs: sheet.faqs,
       nowBangkok: nowBangkokString(),
     });

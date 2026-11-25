@@ -24,6 +24,12 @@ function statusLabel(status: string): string {
   return `ไปมาแล้วหรือยัง: ${s}`;
 }
 
+/** "ที่" + place, with a space before Latin names ("ที่ One Bangkok"). */
+function atPlace(place: string): string {
+  if (/^(ที่|ออนไลน์)/.test(place)) return place;
+  return /^[A-Za-z0-9]/.test(place) ? `ที่ ${place}` : `ที่${place}`;
+}
+
 function formatTasks(tasks: SheetRow[]): string {
   if (tasks.length === 0) return "(ไม่มี)";
   return toMama(
@@ -34,7 +40,7 @@ function formatTasks(tasks: SheetRow[]): string {
           t.category && !/^all$/i.test(t.category) && `หมวด ${t.category}`,
           `สถานะ: ${statusLabel(t.status)}`,
           t.priority && `ความสำคัญ${t.priority}`,
-          t.place && `ที่${t.place}`,
+          t.place && atPlace(t.place),
           t.who && `กับ ${t.who}`,
           t.note,
         ]
@@ -50,13 +56,13 @@ function formatEvents(events: SheetRow[]): string {
   return events
     .map((e) =>
       [
-        e.date && `${e.date} (${weekdayTh(e.date)})`,
+        e.date && (e.endDate ? `ช่วง ${e.date} ถึง ${e.endDate}` : `${e.date} (${weekdayTh(e.date)})`),
         [e.start, e.end].filter(Boolean).join("-"),
         e.title,
-        e.place && !e.title.includes(e.place) && (/^(ที่|ออนไลน์)/.test(e.place) ? e.place : `ที่${e.place}`),
+        e.place && !e.title.includes(e.place) && atPlace(e.place),
         e.who && `กับ ${e.who}`,
         e.priority && `ความสำคัญ${e.priority}`,
-        e.category && /wedding/i.test(e.category) ? `สถานะ: ${statusLabel(e.status)}` : e.status && `สถานะ ${e.status}`,
+        e.category && !/^all$/i.test(e.category) ? `หมวด ${e.category} สถานะ: ${statusLabel(e.status)}` : e.status && `สถานะ ${e.status}`,
         e.note,
       ]
         .filter(Boolean)
@@ -84,7 +90,7 @@ function formatRoutines(routines: SheetRow[]): string {
               : `ทุกวัน${e.days.map((d) => DAY_NAMES[d]).join(" ")}`,
           [e.start, e.end].filter(Boolean).join("-"),
           e.title,
-          e.place && !e.title.includes(e.place) && (/^(ที่|ออนไลน์)/.test(e.place) ? e.place : `ที่${e.place}`),
+          e.place && !e.title.includes(e.place) && atPlace(e.place),
           e.who && `กับ ${e.who}`,
           e.note,
         ]
@@ -131,7 +137,7 @@ ${targetDate ? `- วันที่ผู้ใช้ถามถึงคื�
   ห้ามพูดว่าตั้งเตือนให้แล้ว
 - ถ้าถามถึงวันที่ผ่านมาแล้ว ให้ตอบตามตารางที่มี และบอกว่า "ตามตาราง" เพราะยูตะไม่รู้ว่าเกิดขึ้นจริงหรือไม่
 - ถ้าถามถึงกิจวัตรที่มีใน <routine> แต่ <routine_on_target_day> บอกว่าวันนั้นไม่มี ให้ตอบว่าวันนั้นไม่มีกิจวัตรนั้นตามตาราง (เช่น "วันอาทิตย์ม๊าไม่ได้ไปทำงานตามตารางนะ") ห้ามตอบว่าไม่รู้
-- ถ้าถามกว้าง ๆ ว่ามีกิจกรรมอะไรบ้าง ให้ลิสต์กิจกรรมที่มีวันที่ใน <schedule> ให้ครบทุกรายการ
+- ถ้าถามกว้าง ๆ ว่ามีกิจกรรมอะไรบ้าง ให้ลิสต์ทุกรายการใน <schedule> ไม่ข้ามรายการไหน (รวมกิจกรรมที่เป็นช่วงหลายวันที่ครอบคลุมวันนั้นด้วย)
 - ถ้าถามเรื่องแต่งงาน และ <focus> มีรายการหมวด Wedding ให้ลิสต์ทุกรายการใน <focus> พร้อมบอกว่า "ไปมาแล้ว" หรือ "ยังไม่ได้ไป" ตามสถานะที่ระบุ ห้ามเดาเอง
 - ถ้ามี <focus> แปลว่าผู้ใช้ถามถึงรายการนั้นโดยตรง ให้ตอบเฉพาะรายการใน <focus> ห้ามพูดถึงกิจกรรมอื่น ถ้าถามว่า "วันไหน" ให้ตอบแค่วันสั้น ๆ ถ้าเป็นรายการที่ทำซ้ำ ให้บอกรูปแบบก่อน เช่น "ทุกวันที่ 23 ของเดือนฮับป๊า" แล้วค่อยบอกครั้งถัดไป
 - ถ้าถามว่ามีอะไรต้องทำ/ค้างอยู่ ให้รวมรายการใน <tasks> ที่สถานะยังไม่เสร็จ (ไม่ใช่ done/เสร็จ/finished) ด้วย โดยบอกว่ายังไม่ได้กำหนดวัน
